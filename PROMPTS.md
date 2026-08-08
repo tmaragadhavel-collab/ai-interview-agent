@@ -312,7 +312,73 @@ key; everything about *quality* needs one.
 
 ---
 
-## 9. Post-live-key run
+## 9. Restyle: glassmorphism → Dark Bold (Enterprise)
+
+Frontend-only. Three files touched (`public/index.html`, `public/styles.css`,
+`public/app.js`); `git diff --name-only HEAD -- src/ server.js scripts/` came back
+empty, and the 45-assertion contract suite still passes.
+
+**Tokens applied as specified:** flat `#0A0A0B` ground, solid `#151517` /
+`#16161A` panels, `1px solid rgba(255,255,255,0.08)` border, 14px radius,
+`0 4px 20px rgba(0,0,0,0.4)` shadow, orange `#FF7A1A` accent, green `#3DD68C`,
+coral `#F2836B`, amber `#F0B860`. Verified in-browser against computed styles
+rather than by eye. Zero `backdrop-filter` declarations remain anywhere.
+
+**What the restyle deleted, not just restyled.** The old system had three
+mechanisms that existed *only* to pay for `backdrop-filter`, and all three became
+dead weight the moment panels went opaque:
+
+- the `.panel::before` scrim layer (glass over a vivid gradient fails contrast;
+  opaque `#151517` does not)
+- `trimBlurLayers()` and `.bubble--flat` in `app.js`, which capped live blurred
+  compositing layers at 14
+- the `@supports not (backdrop-filter)` fallback block, and the mobile rule that
+  stripped blur from picker cards
+
+Removing them is most of why this is genuinely simpler than what it replaced —
+the stylesheet no longer has a GPU budget to manage. The `prefers-reduced-motion`
+block shrank accordingly: it now gates only the message fade-in, the report
+fade-in and the thinking dots, since nothing else animates.
+
+**The rail caption is the substantive change, not a cosmetic one.** The brief
+flagged that a plan jumping 7 → 8 → 12 → 28 → 29 "looks random". The old rail
+stated the reasoning once in a footer sentence and hid the per-day rationale in a
+`title` tooltip. Now every tile carries its own one-line caption — `Skipped`,
+`4 attempts`, `Passed 1st try — baseline`, `No record — general probe`.
+
+Worth naming how this stayed frontend-only: `/api/interview/:sessionId/meta`
+already returned `missionData` per topic, so `whyCaption()` derives the short
+string client-side. The server's longer `reason` string is still used for the
+hover tooltip and the `aria-label`. No endpoint changed shape — which was the
+brief's own stated tripwire for scope creep, and it held.
+
+**Accessibility is measurably better, as predicted.** I computed real contrast
+ratios against the new opaque fills rather than assuming. Every pair clears AA,
+lowest 5.85:1 (dimmest small text on panel); primary text is 16.56:1. Zero
+failures. Focus rings confirmed as a 2px orange outline resolving from
+`var(--accent)`, with candidate cards also revealing their accent bar on keyboard
+focus.
+
+**One bug I introduced and caught:** a missing semicolon after `height: 1px` in
+`.visually-hidden`, which would have silently swallowed the following
+`overflow: hidden` declaration and left screen-reader-only text visible on screen.
+Fixed before testing.
+
+**Re-verified end to end after the restyle** (placeholder key, so fallback text):
+picker → candidate select → full 10-question interview → feedback swap. The rail
+state machine was the specific thing to watch, and it stepped correctly:
+completed-tile count advanced 0→1→2→3→4 and the current tile advanced
+7→8→12→28→29, two questions per topic. Stat cards read 10 questions / 5 days /
+2 strengths / 3 gaps. Mobile at 375×812: no overflow on either screen, rail
+horizontal and scrollable with captions intact.
+
+I did **not** import the reference dashboard's page shell — no Knowledge Base,
+Automations, Integrations or Settings nav. Palette and component treatment only,
+same three screens.
+
+---
+
+## 10. Post-live-key run
 
 _To be filled in after the live end-to-end run. Findings, prompt adjustments made
 in response to actual output quality, measured latency/cost, and the final

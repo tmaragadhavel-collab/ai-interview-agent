@@ -12,9 +12,6 @@
 (() => {
   'use strict';
 
-  /** Cap on simultaneously frosted bubbles; older ones flatten. See styles.css. */
-  const LIVE_BLUR_BUBBLES = 14;
-
   const $ = (id) => document.getElementById(id);
 
   const el = {
@@ -26,7 +23,8 @@
     grid: $('candidate-grid'),
     rail: $('rail-track'),
     railProgress: $('rail-progress'),
-    candName: $('cand-name'),
+    avatar: $('cand-avatar'),
+    candGreet: $('cand-greet'),
     candRole: $('cand-role'),
     candDay: $('cand-day'),
     candTopic: $('cand-topic'),
@@ -34,8 +32,9 @@
     composer: $('composer'),
     answer: $('answer'),
     send: $('send'),
-    reportSummary: $('report-summary'),
     reportStats: $('report-stats'),
+    reportSummary: $('report-summary'),
+    reportMeta: $('report-meta'),
     lists: {
       strengths: $('list-strengths'),
       gaps: $('list-gaps'),
@@ -81,6 +80,15 @@
     return body;
   }
 
+  /** First letters of the first and last name, for the avatar circle. */
+  function initials(name) {
+    const parts = String(name).trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    const first = parts[0][0] || '';
+    const last = parts.length > 1 ? parts[parts.length - 1][0] || '' : '';
+    return (first + last).toUpperCase();
+  }
+
   /** Text is always inserted as textContent — never innerHTML. */
   function bubble(role, text) {
     const node = document.createElement('div');
@@ -98,20 +106,8 @@
     node.appendChild(body);
 
     el.transcript.appendChild(node);
-    trimBlurLayers();
     scrollTranscript();
     return node;
-  }
-
-  /**
-   * Keep the number of live backdrop-filter layers bounded. A 20-turn interview
-   * would otherwise leave 20+ blurred compositing layers stacked on screen,
-   * which is exactly what tanks frame rate on a throttled mobile profile.
-   */
-  function trimBlurLayers() {
-    const bubbles = el.transcript.querySelectorAll('.bubble');
-    const cutoff = bubbles.length - LIVE_BLUR_BUBBLES;
-    for (let i = 0; i < cutoff; i += 1) bubbles[i].classList.add('bubble--flat');
   }
 
   function scrollTranscript() {
@@ -208,8 +204,10 @@
         body: JSON.stringify({ sessionId: state.sessionId, candidate }),
       });
 
-      el.candName.textContent = candidate.member.name;
-      el.candRole.textContent = `${candidate.member.jobRole} · ${candidate.member.yearsExperience} yrs experience`;
+      const member = candidate.member;
+      el.avatar.textContent = initials(member.name);
+      el.candGreet.textContent = `Let's begin, ${member.name.split(/\s+/)[0]} 👋`;
+      el.candRole.textContent = `${member.jobRole} · ${member.yearsExperience} yrs experience`;
       el.transcript.textContent = '';
 
       showScreen('interview');
@@ -269,6 +267,24 @@
     renderRail();
   }
 
+  /**
+   * Short "why this day" caption for a rail tile, derived from the same
+   * mission record that drove topic selection server-side. Without this, a plan
+   * that jumps 7 → 8 → 12 → 28 → 29 looks arbitrary; with it, the ordering
+   * reads as deliberate.
+   */
+  function whyCaption(topic) {
+    const md = topic.missionData;
+    if (!md) return 'No record — general probe';
+    if (md.skipped) return 'Skipped';
+    if (md.passed === false) {
+      return md.attempts ? `Failed, ${md.attempts} attempts` : 'Failed';
+    }
+    const attempts = md.attempts ?? 1;
+    if (attempts === 1) return 'Passed 1st try — baseline';
+    return `${attempts} attempts`;
+  }
+
   function renderRail() {
     const meta = state.meta;
     if (!meta) return;
@@ -282,26 +298,26 @@
       const step = document.createElement('li');
       step.className = `step${done ? ' step--done' : ''}${current ? ' step--current' : ''}`;
 
-      const orb = document.createElement('span');
-      orb.className = 'step__orb';
-      orb.textContent = done ? '✓' : String(topic.day);
-      orb.setAttribute('aria-hidden', 'true');
+      const tile = document.createElement('span');
+      tile.className = 'step__tile';
+      tile.textContent = done ? '✓' : String(topic.day);
+      tile.setAttribute('aria-hidden', 'true');
 
       const label = document.createElement('span');
       label.className = 'step__label';
-
-      const day = document.createElement('span');
-      day.className = 'step__day';
-      day.textContent = `DAY ${topic.day}`;
 
       const title = document.createElement('span');
       title.className = 'step__title';
       title.textContent = topic.title;
 
-      label.append(day, title);
-      step.append(orb, label);
+      const why = document.createElement('span');
+      why.className = 'step__why';
+      why.textContent = whyCaption(topic);
 
-      // The scoring rationale is the interesting part — expose it on hover.
+      label.append(title, why);
+      step.append(tile, label);
+
+      // The full scoring rationale from the server, on hover.
       step.title = `Day ${topic.day} — ${topic.title}\n${topic.reason}`;
       step.setAttribute(
         'aria-label',
@@ -322,20 +338,77 @@
 
   // ---------------------------------------------------------------- report
 
+  function statCard({ label, value, tag, tone }) {
+    const card = document.createElement('div');
+    card.className = `stat stat--${tone}`;
+    card.setAttribute('role', 'listitem');
+
+    const l = document.createElement('span');
+    l.className = 'stat__label';
+    l.textContent = label;
+
+    const v = document.createElement('span');
+    v.className = 'stat__value';
+    v.textContent = String(value);
+
+    card.append(l, v);
+
+    if (tag) {
+      const t = document.createElement('span');
+      t.className = 'stat__tag';
+      t.textContent = tag;
+      card.appendChild(t);
+    }
+    return card;
+  }
+
   function renderReport(feedback) {
     const safe = feedback && typeof feedback === 'object' ? feedback : {};
-
-    el.reportSummary.textContent = safe.summary || 'No summary was returned for this interview.';
-
     const meta = state.meta;
-    el.reportStats.textContent = meta
-      ? `${meta.candidate.name} · ${meta.questionCount} questions · ${meta.plan.length} curriculum days · ${meta.plan.map((t) => `Day ${t.day}`).join(', ')}`
+
+    const strengths = Array.isArray(safe.strengths) ? safe.strengths : [];
+    const gaps = Array.isArray(safe.gaps) ? safe.gaps : [];
+    const next = Array.isArray(safe.next) ? safe.next : [];
+
+    // Stat row — only numbers the server actually guarantees.
+    el.reportStats.textContent = '';
+    el.reportStats.append(
+      statCard({
+        label: 'Questions asked',
+        value: meta?.questionCount ?? '—',
+        tag: 'Complete',
+        tone: 'accent',
+      }),
+      statCard({
+        label: 'Days covered',
+        value: meta?.plan?.length ?? '—',
+        tag: 'Personalised',
+        tone: 'accent',
+      }),
+      statCard({
+        label: 'Strengths',
+        value: strengths.length,
+        tag: 'Positive',
+        tone: 'green',
+      }),
+      statCard({
+        label: 'Gaps',
+        value: gaps.length,
+        tag: 'To address',
+        tone: 'coral',
+      }),
+    );
+
+    el.reportSummary.textContent =
+      safe.summary || 'No summary was returned for this interview.';
+
+    el.reportMeta.textContent = meta
+      ? `${meta.candidate.name} · ${meta.plan.map((t) => `Day ${t.day}`).join(', ')}`
       : '';
 
-    for (const key of ['strengths', 'gaps', 'next']) {
+    for (const [key, items] of Object.entries({ strengths, gaps, next })) {
       const list = el.lists[key];
       list.textContent = '';
-      const items = Array.isArray(safe[key]) ? safe[key] : [];
       if (!items.length) {
         const li = document.createElement('li');
         li.textContent = 'None recorded.';

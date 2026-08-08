@@ -296,44 +296,51 @@ key — the logs should show one attempt, `transient=false`, and no retries.
 Plain HTML/CSS/JS served as static files by the same Express process. No build
 step, no framework.
 
-The glassmorphism is built environment-first: an ambient mesh of four blurred
-radial-gradient blobs drifting on 78–96 second loops over a near-black base,
-because frosted glass only reads as glass when there is something worth blurring
-behind it. Panels are `rgba(255,255,255,0.06–0.10)` with `blur(24px)
-saturate(140%)`, a hairline `rgba(255,255,255,0.14)` border, a 20px radius, a
-diffuse drop shadow for lift and an inset top highlight for the glass edge. Every
-panel carrying body text has a `rgba(10,12,18,0.35)` scrim under the blur so text
-stays legible whichever gradient colour drifts behind it.
+The visual language is **Dark Bold (Enterprise)**: a flat `#0A0A0B` ground, solid
+high-contrast panels, and one bold warm-orange accent doing all the signalling.
+No blur, no glass, no gradient mesh, no ambient animation.
 
-The signature element is the **progress rail**: one glass orb per planned topic,
-labelled with its real curriculum day number, connected by a gradient line that
-fills as topics complete. Upcoming topics are dim, the current one has a pulsing
-teal glow, completed ones fill soft mint with a checkmark. Hovering an orb shows
-why that day was selected. It is fed from `/api/interview/:sessionId/meta`.
+Panels are solid `#151517` (`#16161A` when elevated) with a
+`1px solid rgba(255,255,255,0.08)` border, a 14px radius and a single
+`0 4px 20px rgba(0,0,0,0.4)` drop shadow. There is no `backdrop-filter` anywhere
+in the stylesheet.
 
-Accents are used as signal, not decoration: teal `#4FD1C5` for active state,
-mint `#8FE3B8` for strengths, coral `#F2836B` for gaps, amber `#F0B860` for next
-steps. Type is Space Grotesk for display, Inter for body, IBM Plex Mono for data
-like `DAY 12`.
+Colour is used as signal, not decoration: orange `#FF7A1A` for active state,
+primary actions and progress fill; green `#3DD68C` for completed steps and
+strengths; coral `#F2836B` for gaps; amber `#F0B860` for next steps. Type is
+Space Grotesk at 700 for headings and stat numbers, Inter for body and
+transcript, IBM Plex Mono for day tags and counters.
 
-Performance discipline, since `backdrop-filter` is GPU-expensive:
+The signature element is the **progress rail**: one solid rounded-square day
+tile per planned topic, each captioned with *why* that day was chosen —
+`Skipped`, `4 attempts`, `Passed 1st try — baseline`, `No record — general
+probe`. Upcoming tiles are a muted dark fill, the current one is orange,
+completed ones are green with a checkmark, and the connector between them fills
+as progress is made. The captions are derived client-side from the same
+`missionData` that drove selection server-side, so a plan that jumps
+7 → 8 → 12 → 28 → 29 reads as deliberate rather than random. Fed from
+`/api/interview/:sessionId/meta`.
 
-- glass is never nested inside glass — the transcript scroller and the report's
-  three sub-panels are deliberately flat so the bubbles and the report panel can
-  be the frosted layer
-- `will-change: transform` only on the four animating blobs, which animate
-  transform only
-- bubbles past the most recent 14 are flattened to an opaque fill by
-  `app.js`, so a long interview cannot accumulate unbounded compositing layers
-- the picker's cards drop `backdrop-filter` entirely below 560px, where a phone
-  can put all 20 on screen at once
-- measured on a 375×812 profile: no horizontal overflow, 4 blurred layers on the
-  interview screen, 0 on the picker
+The interview screen opens with an initials avatar, a `Let's begin, {name} 👋`
+greeting and the candidate's role and experience as a muted subtitle. The
+feedback screen opens with a row of stat cards — questions asked, days covered,
+strengths count, gaps count — then the summary in bold display type, then three
+solid cards with green / coral / amber top accent bars.
 
-`prefers-reduced-motion: reduce` freezes the blob drift entirely, removes the
-message slide-up and the orb pulse (which becomes a static glow), and collapses
-transitions. Focus rings are a 2px teal outline with offset on every interactive
-element — glass is notorious for swallowing focus states.
+Because the panels are opaque, contrast is a fixed known quantity rather than
+something that shifts with whatever gradient sits behind a panel. Measured on the
+actual fills, every text/background pair clears WCAG AA: 16.6:1 for primary text
+on panel, 9.9:1 for body copy, 5.9:1 for the dimmest small text, 7.0:1 for orange
+on panel, and 7.3:1 for the dark text used on orange fills. Focus rings are a
+2px orange outline with offset on every interactive element, and candidate cards
+additionally reveal their accent bar on keyboard focus.
+
+Only the message fade-in, the report fade-in and the thinking-pill dots are
+animated, so that is all `prefers-reduced-motion: reduce` needs to gate.
+
+Verified on a 375×812 profile: no horizontal overflow on any screen, the rail
+switches to a horizontally-scrolling row with captions intact, and zero
+`backdrop-filter` layers.
 
 ---
 
