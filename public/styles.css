@@ -1,0 +1,1048 @@
+/* ============================================================================
+   AI Interview Agent — glassmorphism UI
+
+   Build order matters here: the ambient gradient mesh is built FIRST, because
+   frosted glass only reads as glass when there is something worth blurring
+   behind it. A glass panel over a flat background is just a grey box.
+
+   Blur budget (backdrop-filter is GPU-expensive, so it is spent deliberately):
+     - .panel          — rail, top bar, composer, report, picker cards
+     - .bubble         — chat messages, at a lighter blur
+   Nothing else blurs, and nothing blurred is nested inside anything blurred.
+   The transcript scroller and the report's inner cards are intentionally
+   transparent/flat so glass never stacks on glass. Bubbles past the most recent
+   14 are flattened by app.js (`.bubble--flat`) so a long interview does not
+   accumulate unbounded compositing layers.
+   ========================================================================= */
+
+:root {
+  --base: #0b0d12;
+  --base-lift: #11141c;
+
+  /* Accents — signal, not decoration. Used as glow/border, never as fill. */
+  --teal: #4fd1c5; /* in progress / active */
+  --amber: #f0b860; /* attention / next steps */
+  --coral: #f2836b; /* gaps */
+  --mint: #8fe3b8; /* strengths / complete */
+
+  --ink: #f2f4f8;
+  --ink-2: rgba(242, 244, 248, 0.74);
+  --ink-3: rgba(242, 244, 248, 0.52);
+
+  /* Glass system. Fill opacity encodes hierarchy: more opaque = more important. */
+  --glass-1: rgba(255, 255, 255, 0.06);
+  --glass-2: rgba(255, 255, 255, 0.08);
+  --glass-3: rgba(255, 255, 255, 0.1);
+  --hairline: rgba(255, 255, 255, 0.14);
+  --scrim: rgba(10, 12, 18, 0.35);
+
+  --radius: 20px;
+  --radius-sm: 14px;
+
+  --lift: 0 8px 32px rgba(0, 0, 0, 0.35);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--base);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* ------------------------------------------------- ambient gradient mesh */
+
+.mesh {
+  position: fixed;
+  inset: -20vmax;
+  z-index: -1;
+  pointer-events: none;
+  /* A near-black base under the blobs so nothing washes out to grey. */
+  background: radial-gradient(120% 90% at 50% 0%, #121723 0%, var(--base) 62%);
+}
+
+.blob {
+  position: absolute;
+  display: block;
+  width: 62vmax;
+  height: 62vmax;
+  border-radius: 50%;
+  /* `filter: blur` (not backdrop-filter) — these are the thing being blurred,
+     not a blurring surface, which is far cheaper. */
+  filter: blur(90px);
+  opacity: 0.5;
+  /* Only the actively-animating layers get will-change. */
+  will-change: transform;
+}
+
+.blob--indigo {
+  top: 6%;
+  left: 2%;
+  background: radial-gradient(circle at 50% 50%, #3b3fa8 0%, rgba(59, 63, 168, 0) 68%);
+  animation: drift-a 78s ease-in-out infinite;
+}
+.blob--teal {
+  top: 40%;
+  left: 46%;
+  background: radial-gradient(circle at 50% 50%, #148f8a 0%, rgba(20, 143, 138, 0) 68%);
+  animation: drift-b 90s ease-in-out infinite;
+}
+.blob--violet {
+  top: 2%;
+  left: 52%;
+  background: radial-gradient(circle at 50% 50%, #6c4bb0 0%, rgba(108, 75, 176, 0) 68%);
+  animation: drift-c 84s ease-in-out infinite;
+}
+.blob--deep {
+  top: 58%;
+  left: 8%;
+  width: 48vmax;
+  height: 48vmax;
+  opacity: 0.4;
+  background: radial-gradient(circle at 50% 50%, #1d3a6e 0%, rgba(29, 58, 110, 0) 68%);
+  animation: drift-a 96s ease-in-out infinite reverse;
+}
+
+/* transform-only keyframes — no layout, no paint, compositor thread only */
+@keyframes drift-a {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(9vmax, 6vmax, 0) scale(1.12);
+  }
+  66% {
+    transform: translate3d(-6vmax, 10vmax, 0) scale(0.94);
+  }
+}
+@keyframes drift-b {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1.05);
+  }
+  50% {
+    transform: translate3d(-12vmax, -8vmax, 0) scale(0.9);
+  }
+}
+@keyframes drift-c {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(0.96);
+  }
+  40% {
+    transform: translate3d(-8vmax, 12vmax, 0) scale(1.15);
+  }
+  75% {
+    transform: translate3d(7vmax, 4vmax, 0) scale(1.02);
+  }
+}
+
+/* --------------------------------------------------------- glass system */
+
+.panel {
+  position: relative;
+  background: var(--glass-2);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  /* Soft diffuse lift, plus a hairline top highlight so the edge reads as glass
+     catching light rather than as a flat outline. */
+  box-shadow: var(--lift), var(--edge);
+}
+
+/* Any panel carrying body text gets a dark scrim UNDER the blur. Glass over a
+   vivid gradient routinely fails contrast; this keeps text at WCAG AA no matter
+   which blob happens to sit behind the panel. */
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--scrim);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ------------------------------------------------------------ typography */
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0;
+}
+.display--xl {
+  font-size: clamp(2rem, 5vw, 3.25rem);
+}
+.display--lg {
+  font-size: clamp(1.6rem, 3.6vw, 2.4rem);
+}
+.display--sm {
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--teal);
+  margin: 0 0 0.75rem;
+}
+
+.lede {
+  color: var(--ink-2);
+  max-width: 60ch;
+  margin: 1rem 0 0;
+  font-size: 1rem;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+}
+.mono--dim {
+  color: var(--ink-3);
+}
+
+.tag {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  padding: 0.2rem 0.5rem;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.tag--teal {
+  color: var(--teal);
+  border-color: rgba(79, 209, 197, 0.4);
+  background: rgba(79, 209, 197, 0.1);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Glass hides default focus rings notoriously well — make them loud. */
+:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* ---------------------------------------------------------------- screens */
+
+.screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+[hidden] {
+  display: none !important;
+}
+
+.screen--picker {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(2rem, 6vw, 5rem) clamp(1.25rem, 4vw, 2.5rem) 4rem;
+}
+.picker__head {
+  margin-bottom: clamp(2rem, 5vw, 3.25rem);
+}
+
+/* ---------------------------------------------------------- picker cards */
+
+.grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
+}
+.grid__status {
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  grid-column: 1 / -1;
+}
+
+/* A picker card is a glass panel and a button at once, so it repeats the .panel
+   treatment rather than nesting inside one. */
+.cand {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  text-align: left;
+  padding: 1.15rem 1.25rem 1.25rem;
+  background: var(--glass-1);
+  /* Slightly lighter blur than .panel: the picker shows up to 20 of these at
+     once, which is the heaviest blurred-layer count in the app. */
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  box-shadow: var(--lift), var(--edge);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    transform 180ms ease-out,
+    border-color 180ms ease-out,
+    background 180ms ease-out;
+}
+.cand::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--scrim);
+  z-index: 0;
+  pointer-events: none;
+}
+.cand > * {
+  position: relative;
+  z-index: 1;
+}
+.cand:hover:not(:disabled),
+.cand:focus-visible {
+  transform: translateY(-3px);
+  border-color: rgba(79, 209, 197, 0.45);
+  background: var(--glass-2);
+}
+.cand:disabled {
+  opacity: 0.45;
+  cursor: progress;
+  transform: none;
+}
+.cand__id {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+.cand__name {
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.cand__role {
+  color: var(--ink-2);
+  font-size: 0.875rem;
+}
+.cand__go {
+  margin-top: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--teal);
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+.cand:hover .cand__go,
+.cand:focus-visible .cand__go {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------ interview layout */
+
+.screen--interview {
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: clamp(1rem, 3vw, 1.75rem);
+  height: 100vh;
+  height: 100dvh;
+}
+
+.stage {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 1rem;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ------------------------------------------------ signature: progress rail */
+
+.rail {
+  padding: 1.25rem;
+  position: sticky;
+  top: clamp(1rem, 3vw, 1.75rem);
+}
+.rail__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.rail__head .eyebrow {
+  margin-bottom: 0;
+}
+
+.rail__track {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+
+/* Each step: orb + label, with the connector drawn as a ::after on the item so
+   the fill can advance independently of the orbs. */
+.step {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 0.75rem;
+  padding-bottom: 1.1rem;
+  position: relative;
+}
+.step:last-child {
+  padding-bottom: 0;
+}
+.step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  top: 30px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.16),
+    rgba(255, 255, 255, 0.05)
+  );
+}
+/* Connector below a completed step is filled mint → teal: progress made. */
+.step--done:not(:last-child)::after {
+  background: linear-gradient(to bottom, var(--mint), rgba(79, 209, 197, 0.55));
+}
+
+.step__orb {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  /* Deliberately NOT a backdrop-filter — these sit on the rail panel, which is
+     already frosted. */
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--ink-3);
+  z-index: 1;
+  transition:
+    background 240ms ease-out,
+    border-color 240ms ease-out,
+    color 240ms ease-out;
+}
+
+.step__label {
+  min-width: 0;
+  padding-top: 0.15rem;
+}
+.step__day {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  display: block;
+}
+.step__title {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--ink-3);
+  display: block;
+  transition: color 240ms ease-out;
+}
+
+/* Current topic — teal glow with a slow pulse. */
+.step--current .step__orb {
+  background: rgba(79, 209, 197, 0.16);
+  border-color: var(--teal);
+  color: var(--teal);
+  box-shadow: 0 0 0 4px rgba(79, 209, 197, 0.12), 0 0 18px rgba(79, 209, 197, 0.4);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+.step--current .step__title {
+  color: var(--ink);
+}
+.step--current .step__day {
+  color: var(--teal);
+}
+
+/* Completed — soft mint fill and a checkmark. */
+.step--done .step__orb {
+  background: rgba(143, 227, 184, 0.2);
+  border-color: rgba(143, 227, 184, 0.6);
+  color: var(--mint);
+}
+.step--done .step__title {
+  color: var(--ink-2);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px rgba(79, 209, 197, 0.12), 0 0 18px rgba(79, 209, 197, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(79, 209, 197, 0.06), 0 0 26px rgba(79, 209, 197, 0.6);
+  }
+}
+
+.rail__note {
+  margin: 1.25rem 0 0;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* ------------------------------------------------------------- top bar */
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.9rem 1.15rem;
+}
+.bar__who h2 {
+  margin: 0;
+}
+.bar__role {
+  margin: 0.1rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+}
+.bar__topic {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.bar__topic-title {
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40ch;
+}
+
+/* ------------------------------------------------------------ transcript */
+
+/* Transparent by design — see the blur-budget note at the top of this file. */
+.transcript {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0.25rem 0.5rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.transcript::-webkit-scrollbar {
+  width: 8px;
+}
+.transcript::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+}
+
+.bubble {
+  max-width: min(76ch, 88%);
+  padding: 0.85rem 1.05rem;
+  border-radius: var(--radius);
+  /* Lighter blur than .panel: there are many of these on screen at once. */
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  backdrop-filter: blur(16px) saturate(135%);
+  background: var(--glass-1);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.28), var(--edge);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  animation: rise 200ms ease-out both;
+}
+
+/* Applied by app.js to older messages: keeps the look, drops the GPU cost. */
+.bubble--flat {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: rgba(24, 28, 38, 0.72);
+}
+
+.bubble--interviewer {
+  align-self: flex-start;
+  border-color: rgba(79, 209, 197, 0.34);
+  background: linear-gradient(
+    180deg,
+    rgba(79, 209, 197, 0.09),
+    rgba(255, 255, 255, 0.05)
+  );
+}
+.bubble--interviewer.bubble--flat {
+  background: rgba(22, 34, 40, 0.78);
+}
+
+/* The candidate's own words — more opaque, so they carry presence. */
+.bubble--candidate {
+  align-self: flex-end;
+  background: var(--glass-3);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.bubble--candidate.bubble--flat {
+  background: rgba(32, 36, 48, 0.8);
+}
+
+.bubble--error {
+  align-self: center;
+  border-color: rgba(240, 184, 96, 0.5);
+  background: rgba(240, 184, 96, 0.1);
+  color: var(--amber);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+.bubble__who {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 0.4rem;
+}
+.bubble--interviewer .bubble__who {
+  color: var(--teal);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Thinking indicator — a real interview has a beat of silence before the next
+   question, so show the beat rather than hiding the latency. */
+.thinking {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.7rem 1rem;
+  border-radius: 999px;
+  background: var(--glass-1);
+  border: 1px solid var(--hairline);
+  box-shadow: var(--edge);
+  animation: rise 200ms ease-out both;
+}
+.thinking span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--teal);
+  opacity: 0.35;
+  animation: blink 1.25s ease-in-out infinite;
+}
+.thinking span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+.thinking span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+/* ------------------------------------------------------------- composer */
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  padding: 0.7rem 0.7rem 0.7rem 1rem;
+}
+.composer__input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  max-height: 8.5rem;
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  padding: 0.5rem 0;
+}
+.composer__input::placeholder {
+  color: var(--ink-3);
+}
+.composer__input:focus {
+  outline: none;
+}
+.composer:focus-within {
+  border-color: rgba(79, 209, 197, 0.4);
+}
+
+.btn {
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background 160ms ease-out,
+    border-color 160ms ease-out,
+    transform 160ms ease-out,
+    opacity 160ms ease-out;
+}
+.btn--send {
+  padding: 0.65rem 1.3rem;
+  color: #08221f;
+  background: var(--teal);
+  border-color: var(--teal);
+  box-shadow: 0 4px 18px rgba(79, 209, 197, 0.3);
+}
+.btn--send:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: #6fdcd2;
+}
+.btn--send:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.btn--ghost {
+  padding: 0.7rem 1.4rem;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--hairline);
+}
+.btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(79, 209, 197, 0.4);
+}
+
+/* -------------------------------------------------------- report screen */
+
+.screen--feedback {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: clamp(1.5rem, 5vw, 4rem) clamp(1.25rem, 4vw, 2.5rem);
+}
+.report {
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  animation: rise 260ms ease-out both;
+}
+.report__summary {
+  font-size: clamp(1rem, 1.6vw, 1.125rem);
+  line-height: 1.7;
+  color: var(--ink);
+  max-width: 72ch;
+  margin: 1rem 0 0;
+}
+.report__meta {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.report__cols {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  margin-top: 1.5rem;
+}
+
+/* Flat, not frosted: these sit inside the frosted .report panel, and stacking
+   backdrop-filters is exactly the glass-on-glass case to avoid. */
+.card {
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  padding: 1.15rem 1.25rem 1.35rem;
+  border-top-width: 2px;
+}
+.card--mint {
+  border-top-color: var(--mint);
+}
+.card--coral {
+  border-top-color: var(--coral);
+}
+.card--amber {
+  border-top-color: var(--amber);
+}
+
+.card__title {
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin: 0 0 0.85rem;
+}
+.card--mint .card__title {
+  color: var(--mint);
+}
+.card--coral .card__title {
+  color: var(--coral);
+}
+.card--amber .card__title {
+  color: var(--amber);
+}
+
+.card__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.7rem;
+}
+.card__list li {
+  position: relative;
+  padding-left: 1rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+.card__list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+}
+.card--mint .card__list li::before {
+  background: var(--mint);
+  opacity: 1;
+}
+.card--coral .card__list li::before {
+  background: var(--coral);
+  opacity: 1;
+}
+.card--amber .card__list li::before {
+  background: var(--amber);
+  opacity: 1;
+}
+
+.report__actions {
+  margin-top: 1.75rem;
+}
+
+/* ------------------------------------------------------------ responsive */
+
+@media (max-width: 940px) {
+  .screen--interview {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    min-height: 100dvh;
+  }
+
+  /* Rail goes horizontal on narrow screens and stops being sticky. */
+  .rail {
+    position: static;
+    padding: 1rem;
+  }
+  .rail__track {
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    padding-bottom: 0.35rem;
+    margin-top: 1rem;
+    scrollbar-width: none;
+  }
+  .rail__track::-webkit-scrollbar {
+    display: none;
+  }
+  .step {
+    grid-template-columns: none;
+    grid-template-rows: 30px auto;
+    justify-items: center;
+    gap: 0.5rem;
+    padding: 0 0.35rem;
+    min-width: 88px;
+    flex: 0 0 auto;
+  }
+  .step:not(:last-child)::after {
+    left: auto;
+    top: 14px;
+    bottom: auto;
+    right: -6px;
+    width: auto;
+    height: 2px;
+    left: calc(50% + 21px);
+    background: linear-gradient(to right, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05));
+  }
+  .step--done:not(:last-child)::after {
+    background: linear-gradient(to right, var(--mint), rgba(79, 209, 197, 0.55));
+  }
+  .step__label {
+    text-align: center;
+    padding-top: 0;
+  }
+  .step__title {
+    font-size: 0.6875rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .rail__note {
+    display: none;
+  }
+
+  .transcript {
+    max-height: 58dvh;
+  }
+  .bubble {
+    max-width: 94%;
+  }
+  .bar__topic-title {
+    max-width: 26ch;
+  }
+}
+
+@media (max-width: 560px) {
+  body {
+    font-size: 14.5px;
+  }
+  .blob {
+    /* Fewer, cheaper pixels to blur on mobile GPUs. */
+    filter: blur(70px);
+  }
+
+  /* A full-width picker on a phone can put every card on screen at once, so the
+     cards drop to a flat translucent fill here. Same trade as .bubble--flat:
+     keep the look, spend the GPU budget on the mesh instead. */
+  .cand {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: rgba(22, 26, 36, 0.78);
+  }
+  .bar {
+    padding: 0.8rem 1rem;
+  }
+  .btn__label {
+    display: none;
+  }
+  .btn--send {
+    padding: 0.7rem 0.95rem;
+  }
+  .btn--send::after {
+    content: '↑';
+    font-size: 1rem;
+    line-height: 1;
+  }
+}
+
+/* --------------------------------------------------- reduced motion */
+
+/* Freeze the drift entirely, and drop the message/pulse animations. The current
+   orb keeps a static glow so it still reads as active. */
+@media (prefers-reduced-motion: reduce) {
+  .blob {
+    animation: none !important;
+    will-change: auto;
+  }
+  .bubble,
+  .thinking,
+  .report {
+    animation: none !important;
+  }
+  .step--current .step__orb {
+    animation: none !important;
+    box-shadow: 0 0 0 5px rgba(79, 209, 197, 0.12), 0 0 20px rgba(79, 209, 197, 0.45);
+  }
+  .thinking span {
+    animation: none !important;
+    opacity: 0.7;
+  }
+  .cand:hover:not(:disabled),
+  .btn--send:hover:not(:disabled) {
+    transform: none;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Graceful degradation where backdrop-filter is unsupported (older Firefox):
+   solid-ish fills keep text legible instead of leaving translucent grey boxes. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .panel,
+  .cand,
+  .bubble,
+  .thinking {
+    background: rgba(18, 21, 30, 0.9);
+  }
+  .bubble--interviewer {
+    background: rgba(18, 34, 40, 0.92);
+  }
+}

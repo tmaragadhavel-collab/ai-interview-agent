@@ -1,0 +1,32 @@
+{
+  "name": "ai-interview-agent",
+  "version": "1.0.0",
+  "description": "Personalised, adaptive AI technical interview agent for the ABTalks Vibe Code Hackathon (Problem Statement 2)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node scripts/test-interview.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "ai",
+    "interview",
+    "agent",
+    "claude",
+    "anthropic",
+    "express"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.6.2",
+    "helmet": "^8.3.0"
+  }
+}

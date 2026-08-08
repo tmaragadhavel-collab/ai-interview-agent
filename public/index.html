@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Interview Agent — AI Cohort</title>
+    <meta
+      name="description"
+      content="A personalised, adaptive AI technical interviewer for the 31-day AI Cohort programme."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%234FD1C5' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='4.5' fill='%238FE3B8'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <!-- Ambient gradient mesh. Sits behind everything; this is the thing the
+         glass panels are actually blurring. -->
+    <div class="mesh" aria-hidden="true">
+      <span class="blob blob--indigo"></span>
+      <span class="blob blob--teal"></span>
+      <span class="blob blob--violet"></span>
+      <span class="blob blob--deep"></span>
+    </div>
+
+    <!-- ===================================================== PICKER ===== -->
+    <main id="screen-picker" class="screen screen--picker" aria-labelledby="picker-title">
+      <header class="picker__head">
+        <p class="eyebrow">AI Cohort · 31 days · 8 modules</p>
+        <h1 id="picker-title" class="display display--xl">AI Interview Agent</h1>
+        <p class="lede">
+          Select a cohort member. The interviewer reads their real learning
+          record — what they passed, failed, skipped and how many attempts it
+          took — then builds a five-topic interview around it.
+        </p>
+      </header>
+
+      <div id="candidate-grid" class="grid" role="list" aria-busy="true">
+        <p class="grid__status">Loading cohort members…</p>
+      </div>
+    </main>
+
+    <!-- ================================================== INTERVIEW ===== -->
+    <div id="screen-interview" class="screen screen--interview" hidden>
+      <!-- Progress rail: one orb per planned curriculum day -->
+      <aside class="panel rail" aria-label="Interview progress">
+        <div class="rail__head">
+          <p class="eyebrow">Interview plan</p>
+          <p id="rail-progress" class="mono mono--dim">–</p>
+        </div>
+        <ol id="rail-track" class="rail__track"></ol>
+        <p class="rail__note">
+          Topics are selected from this candidate's own mission record and
+          weighted toward the ones they struggled with.
+        </p>
+      </aside>
+
+      <div class="stage">
+        <header class="panel bar">
+          <div class="bar__who">
+            <h2 id="cand-name" class="display display--sm">—</h2>
+            <p id="cand-role" class="bar__role">—</p>
+          </div>
+          <div class="bar__topic">
+            <span id="cand-day" class="tag tag--teal mono">DAY —</span>
+            <span id="cand-topic" class="bar__topic-title">—</span>
+          </div>
+        </header>
+
+        <!-- Transparent on purpose: the bubbles are the glass, so blurring
+             this container too would stack glass on glass. -->
+        <div
+          id="transcript"
+          class="transcript"
+          role="log"
+          aria-live="polite"
+          aria-label="Interview transcript"
+          tabindex="0"
+        ></div>
+
+        <form id="composer" class="panel composer" autocomplete="off">
+          <label class="visually-hidden" for="answer">Your answer</label>
+          <textarea
+            id="answer"
+            class="composer__input"
+            rows="1"
+            placeholder="Type your answer…  (Enter to send, Shift+Enter for a new line)"
+            maxlength="8000"
+          ></textarea>
+          <button id="send" class="btn btn--send" type="submit">
+            <span class="btn__label">Send</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- =================================================== FEEDBACK ===== -->
+    <main id="screen-feedback" class="screen screen--feedback" hidden aria-labelledby="report-title">
+      <article class="panel report">
+        <p class="eyebrow">Interview complete</p>
+        <h1 id="report-title" class="display display--lg">Assessment</h1>
+        <p id="report-summary" class="report__summary"></p>
+
+        <div class="report__meta mono mono--dim">
+          <span id="report-stats"></span>
+        </div>
+
+        <div class="report__cols">
+          <section class="card card--mint" aria-labelledby="h-strengths">
+            <h2 id="h-strengths" class="card__title">Strengths</h2>
+            <ul id="list-strengths" class="card__list"></ul>
+          </section>
+          <section class="card card--coral" aria-labelledby="h-gaps">
+            <h2 id="h-gaps" class="card__title">Gaps</h2>
+            <ul id="list-gaps" class="card__list"></ul>
+          </section>
+          <section class="card card--amber" aria-labelledby="h-next">
+            <h2 id="h-next" class="card__title">Next steps</h2>
+            <ul id="list-next" class="card__list"></ul>
+          </section>
+        </div>
+
+        <div class="report__actions">
+          <button id="restart" class="btn btn--ghost" type="button">
+            Interview another candidate
+          </button>
+        </div>
+      </article>
+    </main>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
