@@ -27,6 +27,59 @@ const limiter = rateLimit({
 
 router.use(limiter);
 
+/**
+ * Derive a seniority level and a domain from the free-text job role.
+ *
+ * Pure and self-contained so the rules are readable in one place and cheap to
+ * adjust. Display metadata only — nothing here feeds topic selection or the
+ * interview itself.
+ *
+ * Short tokens are matched on word boundaries rather than as bare substrings.
+ * That is not pedantry: against the real data, a plain "contains" check puts
+ * "Disting(ui)shed Engineer" in Design and "Arch(it)ect" in IT/Support.
+ *
+ * @param {string} jobRole
+ * @param {number} yearsExperience
+ * @returns {{level: string, domain: string}}
+ */
+function deriveLevelAndDomain(jobRole, yearsExperience) {
+  const role = String(jobRole || '');
+  const years = Number(yearsExperience);
+
+  // --- level: title keywords beat raw years where they are the stronger signal
+  let level;
+  if (/\bintern\b/i.test(role)) {
+    level = 'Entry';
+  } else if (/\b(distinguished|principal|staff)\b/i.test(role)) {
+    level = 'Staff+';
+  } else if (!Number.isFinite(years)) {
+    level = 'Mid';
+  } else if (years <= 2) {
+    level = 'Entry';
+  } else if (years <= 5) {
+    level = 'Mid';
+  } else if (years <= 9) {
+    level = 'Senior';
+  } else {
+    level = 'Staff+';
+  }
+
+  // --- domain: ordered, first match wins
+  const domainRules = [
+    [/\bai\b|machine learning|\bml\b/i, 'AI/ML'],
+    [/data/i, 'Data'],
+    [/devops|\bsre\b|infrastructure/i, 'DevOps'],
+    [/mobile|\bios\b|android/i, 'Mobile'],
+    [/\bux\b|\bui\b|design/i, 'Design'],
+    [/marketing|business|product/i, 'Business'],
+    [/\bit\b|support/i, 'IT/Support'],
+    [/backend|software|engineer/i, 'Engineering'],
+  ];
+
+  const matched = domainRules.find(([pattern]) => pattern.test(role));
+  return { level, domain: matched ? matched[1] : 'General' };
+}
+
 /** Index by member id for O(1) detail lookups. */
 const byId = new Map(candidates.map((c) => [c.member.id, c]));
 
@@ -36,6 +89,8 @@ router.get('/', (req, res) => {
       id: c.member.id,
       name: c.member.name,
       jobRole: c.member.jobRole,
+      yearsExperience: c.member.yearsExperience,
+      ...deriveLevelAndDomain(c.member.jobRole, c.member.yearsExperience),
     })),
   });
 });
@@ -49,3 +104,4 @@ router.get('/:id', (req, res) => {
 });
 
 module.exports = router;
+module.exports.deriveLevelAndDomain = deriveLevelAndDomain; // exported for tests

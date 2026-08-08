@@ -289,11 +289,31 @@
         role.className = 'cand__role';
         role.append(icon('briefcase', 'icon--role'), document.createTextNode(c.jobRole));
 
+        // Level and domain, derived server-side. The level pill picks up the
+        // accent for Senior/Staff+ as a quiet "tougher practice partner" cue;
+        // the domain pill stays neutral because it is information, not status.
+        const badges = document.createElement('span');
+        badges.className = 'cand__badges';
+
+        if (c.level) {
+          const lvl = document.createElement('span');
+          const senior = c.level === 'Senior' || c.level === 'Staff+';
+          lvl.className = `badge ${senior ? 'badge--accent' : 'badge--muted'}`;
+          lvl.textContent = c.level;
+          badges.appendChild(lvl);
+        }
+        if (c.domain) {
+          const dom = document.createElement('span');
+          dom.className = 'badge badge--muted';
+          dom.textContent = c.domain;
+          badges.appendChild(dom);
+        }
+
         const go = document.createElement('span');
         go.className = 'cand__go';
         go.textContent = 'Start interview →';
 
-        card.append(id, name, role, go);
+        card.append(id, name, role, badges, go);
         card.addEventListener('click', () => beginInterview(c, card));
         el.grid.appendChild(card);
       }

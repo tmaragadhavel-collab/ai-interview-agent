@@ -424,6 +424,35 @@ body {
   color: var(--ink-2);
   font-size: 0.875rem;
 }
+/* Quiet metadata pills — small enough that the candidate name keeps the card. */
+.cand__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+.badge {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 0.16rem 0.44rem;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.badge--muted {
+  color: var(--ink-3);
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.04);
+}
+.badge--accent {
+  color: var(--accent);
+  border-color: rgba(255, 122, 26, 0.42);
+  background: var(--accent-dim);
+}
+
 .cand__go {
   margin-top: 0.55rem;
   font-family: var(--font-mono);

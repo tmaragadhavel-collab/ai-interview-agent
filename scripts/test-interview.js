@@ -76,9 +76,37 @@ async function main() {
   const list = await fetch(`${BASE_URL}/api/candidates`).then((r) => r.json());
   check('GET /api/candidates returns 20 candidates', list.candidates?.length === 20);
   check(
-    'candidate list exposes only id/name/jobRole',
-    list.candidates.every((c) => Object.keys(c).sort().join(',') === 'id,jobRole,name'),
+    'candidate list exposes id/name/jobRole/yearsExperience/level/domain',
+    list.candidates.every(
+      (c) => Object.keys(c).sort().join(',') === 'domain,id,jobRole,level,name,yearsExperience',
+    ),
     JSON.stringify(list.candidates[0]),
+  );
+
+  const LEVELS = ['Entry', 'Mid', 'Senior', 'Staff+'];
+  const DOMAINS = ['AI/ML', 'Data', 'DevOps', 'Mobile', 'Design', 'Business', 'IT/Support', 'Engineering', 'General'];
+  check(
+    'every candidate has a level from the known set',
+    list.candidates.every((c) => LEVELS.includes(c.level)),
+    JSON.stringify([...new Set(list.candidates.map((c) => c.level))]),
+  );
+  check(
+    'every candidate has a domain from the known set',
+    list.candidates.every((c) => DOMAINS.includes(c.domain)),
+    JSON.stringify([...new Set(list.candidates.map((c) => c.domain))]),
+  );
+  // Title keywords must beat raw years — the whole point of the override rules.
+  const intern = list.candidates.find((c) => /intern/i.test(c.jobRole));
+  const distinguished = list.candidates.find((c) => /distinguished/i.test(c.jobRole));
+  check(
+    `"${intern?.jobRole}" (${intern?.yearsExperience}y) → Entry via title override`,
+    intern?.level === 'Entry',
+    intern?.level,
+  );
+  check(
+    `"${distinguished?.jobRole}" → Staff+ via title override`,
+    distinguished?.level === 'Staff+',
+    distinguished?.level,
   );
 
   const detail = await fetch(`${BASE_URL}/api/candidates/${CANDIDATE_ID}`).then((r) => r.json());
