@@ -1,0 +1,29 @@
+# Render Blueprint — one persistent web service.
+#
+# Deliberately a long-running process, not a set of serverless functions: the
+# interview is a state machine spread across a dozen HTTP calls, keyed by
+# sessionId in an in-memory Map. Stateless invocations would lose that between
+# turns. See README, "Why Express + Render".
+services:
+  - type: web
+    name: ai-interview-agent
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+
+    buildCommand: npm install
+    startCommand: npm start
+
+    # The server fails fast when ANTHROPIC_API_KEY is missing, so a bad deploy
+    # is caught here rather than on a judge's first question.
+    healthCheckPath: /health
+
+    envVars:
+      # sync: false means Render prompts for this in the dashboard and never
+      # stores it in the repo.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: NODE_VERSION
+        value: "20"
+    # PORT is injected by Render — do not set it here.
