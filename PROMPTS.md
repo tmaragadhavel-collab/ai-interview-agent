@@ -378,7 +378,93 @@ same three screens.
 
 ---
 
-## 10. Post-live-key run
+## 10. Depth pass, and the credit-balance discovery
+
+Two things happened here worth recording separately.
+
+**The "Could not load candidates: Failed to fetch" report was not a code bug.**
+Nothing was listening on port 3000 — I had stopped the preview server at the end
+of the previous turn. A relative `fetch('/api/candidates')` against a dead origin
+rejects with a `TypeError`, which the browser surfaces as that generic string. I
+verified the discriminator empirically (stopped the server, caught the error,
+confirmed `e instanceof TypeError`) rather than assuming, then used it: a
+network-level failure now names the origin and says to check `npm start`, with a
+Retry button. A real API error still shows the server's own message.
+
+**The live API was failing for a reason the code handled correctly.** With a real
+key in place, all ten questions still came back as fallback templates. The logs
+gave the exact cause: `400 invalid_request_error: Your credit balance is too low
+to access the Anthropic API`. Not a 401 — the key is valid, the account has no
+credits. My `isTransient()` classifier treated it as non-transient, so it made
+one attempt and degraded instead of burning three. The interview still completed
+10/10 across 5 days with valid feedback JSON. That is the fallback design working
+exactly as intended, but it means **question quality remains unverified** — the
+one thing that needs credits, not code.
+
+**Depth pass.** Elevation is now two shadows plus a bevel rather than one flat
+shadow: a tight contact shadow anchors the element, a wide ambient shadow gives
+it height, an inset highlight implies a light source. Three tiers
+(`--shadow` / `--shadow-lift` / `--shadow-sm`) so bubbles and rail tiles sit
+lower than panels instead of everything floating at one altitude. Buttons gained
+a gradient face and a real press state. Contrast was re-measured against the new
+gradient stops, not assumed: all pairs still clear AA, lowest 5.39:1.
+
+---
+
+## 11. Hero depth-parallax visual
+
+The dataset has no image URLs, so there is no photograph to animate — this
+generates the depth layers instead. `public/hero.js`, 262 lines including
+comments, vanilla canvas 2D, zero dependencies.
+
+The 3D read comes from parallax across depth layers, not from shading. Each node
+carries a `z` (0 far, 1 near); on pointer move every node shifts by
+`offset * z * MAX_SHIFT`, so near nodes travel visibly further. Per-node radial
+gradients (light top-left) and a 0–1.5px blur scaled by inverse depth reinforce
+it, but the differential motion is the effect. Connections fade by both distance
+and average pair depth, giving the constellation look.
+
+Decisions worth recording:
+
+- **Separate script from `app.js`, deliberately.** This is ornament. If it
+  throws, the candidate fetch must still work — so it gets its own IIFE and its
+  own `<script>` tag rather than living inside the app bundle.
+- **Skipped the "tie accent nodes to the candidate's plan" option.** On the
+  picker screen no session exists yet, so there is no plan to read; wiring one up
+  would mean a second data source for decoration. The brief marked it optional
+  and said to skip if it added real complexity. Accent nodes are fixed indices
+  (`i % 5 === 2`) rather than random, so the composition is stable across
+  reloads.
+- **`ctx.filter` is only touched when the blur value changes.** It is a costly
+  canvas state change; sorting nodes far-to-near for correct overlap happens to
+  group similar blurs together, so most nodes skip the assignment.
+- **One synchronous frame before `requestAnimationFrame`.** Found while testing:
+  the canvas was blank because rAF never ticked. Root cause was environmental —
+  the automation pane was not compositing (verified: 0 rAF ticks in 800ms) — but
+  it exposed a real gap, since a backgrounded tab or an idle compositor at load
+  would show an empty canvas. It now paints immediately, then hands over.
+- **The description overran the canvas by ~60px.** Measured with `Range`
+  client rects rather than block boxes (the `<h1>` box is full-width and
+  overstates it wildly — actual glyphs cleared the canvas by 98px). Capped
+  `.lede` to `min(62ch, 44%)` above 940px; re-measured at 0px encroachment.
+
+**Verified:** paints at desktop and mobile (both palettes present in pixel
+data), bounded region sits above the grid and never full-viewport, no horizontal
+overflow at either width, node count drops on narrow viewports, canvas survives
+the picker → interview → feedback → picker round trip, and the candidate grid
+still loads 20 cards with no error. Backend untouched; 45/45 contract checks
+still pass.
+
+**Not verified at runtime:** idle drift and pointer parallax. `requestAnimationFrame`
+does not tick in this automation pane (0 ticks in 800ms), so the motion could not
+be observed — only the static frame it renders. Same limitation applies to the
+`prefers-reduced-motion` freeze, which I confirmed by code path (`start()`
+early-returns, `applyMotionPreference()` calls `stop()` then `renderStatic()`)
+rather than by emulating the media query. Both need a real browser to confirm.
+
+---
+
+## 12. Post-live-key run
 
 _To be filled in after the live end-to-end run. Findings, prompt adjustments made
 in response to actual output quality, measured latency/cost, and the final

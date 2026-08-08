@@ -24,6 +24,10 @@
     <!-- ===================================================== PICKER ===== -->
     <main id="screen-picker" class="screen screen--picker" aria-labelledby="picker-title">
       <header class="picker__head">
+        <!-- Depth-parallax node network. Purely decorative, so it is hidden
+             from assistive tech and sits behind the headline copy. -->
+        <canvas id="hero-net" class="hero-net" aria-hidden="true"></canvas>
+
         <p class="eyebrow">AI Cohort · 31 days · 8 modules</p>
         <h1 id="picker-title" class="display display--xl">AI Interview Agent</h1>
         <p class="lede">
@@ -128,5 +132,6 @@
     </main>
 
     <script src="/app.js" defer></script>
+    <script src="/hero.js" defer></script>
   </body>
 </html>

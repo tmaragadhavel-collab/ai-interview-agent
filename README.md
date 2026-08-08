@@ -321,6 +321,20 @@ as progress is made. The captions are derived client-side from the same
 7 → 8 → 12 → 28 → 29 reads as deliberate rather than random. Fed from
 `/api/interview/:sessionId/meta`.
 
+The picker screen carries one hero visual: a `<canvas>` node network in
+`public/hero.js` (vanilla canvas 2D, no library). Each node has a simulated
+depth `z`; on pointer move every node shifts by an amount proportional to its
+own `z`, so near nodes travel further than far ones. That parallax across depth
+layers is what produces the 3D read — the per-node sphere shading and the
+sub-pixel blur on distant nodes only reinforce it. Nodes drift on independent
+sine paths and connect to nearby neighbours with opacity scaled by distance and
+depth, evoking the curriculum as a connected network. It is bounded to a region
+beside the headline (never full-viewport), paints one synchronous frame before
+handing over to `requestAnimationFrame`, pauses via `IntersectionObserver` when
+scrolled out of view, drops node count on narrow viewports, and freezes entirely
+under `prefers-reduced-motion`. It loads as a separate script from `app.js` so a
+failure in decoration cannot take down the candidate fetch.
+
 The interview screen opens with an initials avatar, a `Let's begin, {name} 👋`
 greeting and the candidate's role and experience as a muted subtitle. The
 feedback screen opens with a row of stat cards — questions asked, days covered,

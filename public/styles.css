@@ -183,6 +183,61 @@ body {
 .picker__head {
   position: relative;
   margin-bottom: clamp(2rem, 5vw, 3rem);
+  /* Enough height that the canvas beside the copy has room without pushing
+     the grid down. */
+  min-height: 300px;
+}
+
+/* Headline copy sits above both the glow (z -1) and the canvas (z 0). */
+.picker__head > .eyebrow,
+.picker__head > .display,
+.picker__head > .lede {
+  position: relative;
+  z-index: 1;
+}
+
+/* Bounded region, anchored to the right of the headline — never full viewport,
+   so it cannot affect layout or scrolling elsewhere on the page. */
+.hero-net {
+  position: absolute;
+  z-index: 0;
+  top: -30px;
+  right: -10px;
+  width: min(560px, 52%);
+  height: 340px;
+  pointer-events: none; /* the parent .picker__head handles pointermove */
+}
+
+/* Where the canvas sits beside the copy, keep the copy out of its column —
+   measured, the description otherwise ran ~60px into the canvas region. */
+@media (min-width: 941px) {
+  .picker__head > .lede {
+    max-width: min(62ch, 44%);
+  }
+}
+
+/* Narrow screens: there is no room beside the copy, so the network sits behind
+   it and drops in opacity. Legibility of the headline wins over the effect.
+   hero.js independently reduces the node count at these widths. */
+@media (max-width: 940px) {
+  .picker__head {
+    min-height: 0;
+  }
+  .hero-net {
+    top: -20px;
+    right: -20px;
+    left: -20px;
+    width: auto;
+    height: 260px;
+    opacity: 0.5;
+  }
+}
+
+@media (max-width: 560px) {
+  .hero-net {
+    height: 220px;
+    opacity: 0.38;
+  }
 }
 /* One static, diffuse accent glow behind the headline — a depth cue, not a
    scene. No animation. `body { overflow-x: hidden }` keeps it from ever
