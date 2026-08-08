@@ -464,7 +464,91 @@ rather than by emulating the media query. Both need a real browser to confirm.
 
 ---
 
-## 12. Post-live-key run
+## 12. Layout regression, live grading, iconography
+
+**The chat "overlap" had a specific cause, and it was not what it looked like.**
+Reported symptoms were overlapping bubbles, a tooltip covering the transcript,
+and a one-word answer floating loose. Audit first: there was no
+`perspective` / `rotateX` / `rotateY` anywhere in the project (never added), the
+transcript was already `flex-direction: column` with `gap`, `.bubble` was already
+`position: relative` in normal flow, and the only `absolute` was the accent-bar
+pseudo-element *inside* each bubble. So three of the four reported items were
+already correct.
+
+The real defect was `flex-shrink`. Flex items default to `flex-shrink: 1`, so in
+a height-constrained column the bubble boxes were being compressed below their
+own content height and the text spilled past the border into the next message.
+Reproduced before fixing: **5 of 10 bubbles had `scrollHeight - clientHeight > 2`**.
+The boxes never actually overlapped — `gap` held them apart — it was the text
+escaping its box. `flex-shrink: 0` on `.bubble` and `.thinking` fixed it; re-ran
+the same probe at 0 overflowing bubbles, desktop and mobile, with a one-word
+"no" answer in the mix.
+
+The tooltip was the native `title` attribute on rail steps. Native tooltips are
+OS overlays that render above page content, which is exactly the reported
+symptom. Removed; the always-visible `.step__why` caption already carried the
+same information, and the full rationale stayed on `aria-label`.
+
+**Live grading.** The follow-up call now returns
+`{ verdict: "strong"|"partial"|"weak", reply }` under a schema-constrained
+output, with the same degrade path as the feedback call and a defensive parser
+behind it. A `weak` verdict makes the model correct the misconception in the
+interviewer's own voice before asking an easier question on the same topic —
+explicitly not "Incorrect, the correct answer is".
+
+Design points worth recording:
+
+- **The verdict never enters the response body.** `/api/interview` still returns
+  exactly `{ reply, done }`. The verdict is session state, surfaced only through
+  the demo `/meta` endpoint. The contract test's exact-keys assertions cover
+  this, and a grep of the server log confirms `verdict` is never serialized to a
+  response.
+- **Grading changes what is said, not the structure.** Still 5 topics × 2
+  question-turns. That is deliberate: the 8-question / 4-day floor stays a
+  property of the code and cannot be affected by how well someone answers.
+- **The client reads verdicts by diffing `/meta`**, not from the reply. Before
+  each turn it snapshots the per-topic verdicts; whichever topic gains one
+  belongs to the answer just sent, and that bubble gets the badge. Slightly more
+  work than putting the verdict in the response, but it keeps the graded
+  contract byte-clean.
+- Verdicts are also passed into the final feedback prompt, with an instruction
+  to stay consistent with them, so `strengths`/`gaps` cannot contradict what was
+  flagged mid-interview. The templated fallback feedback prefers verdicts too.
+
+**Iconography.** Lucide geometry inlined as SVG rather than a CDN include: one
+icon set, no extra request, no CSP allowance for a third-party origin, no
+dependency. Icons are 14–16px, `currentColor`, and always secondary to text.
+Topic icons map on the day's *title* first (which describes the subject) and
+fall back to its `type`. Kept the initials avatar as the candidate identity mark
+— no fabricated headshots.
+
+**One CSS bug I introduced and caught:** the verdict tile colours
+(`.step--partial` / `.step--weak`) were being overridden by `.step--done`, which
+appears later in the file at equal specificity — and a graded step carries both
+classes. Fixed by qualifying them as `.step--done.step--partial`, so the result
+does not depend on source order.
+
+**Verified.** 45/45 contract assertions with Claude forced unreachable
+(`ANTHROPIC_BASE_URL` pointed at a dead port), including 10 questions across 5
+distinct days and valid feedback JSON — grading degrades to `partial` and the
+conversation never blocks. `parseGraded` unit-tested across 7 shapes (plain,
+fenced, prose-wrapped, bogus verdict coerced to `partial`, and three malformed
+cases correctly rejected). Full UI walk: badges appear on graded answers, rail
+captions switch from pre-interview reasoning to live verdicts as topics
+complete, all three verdict tints resolve correctly, icons render as SVG at the
+right sizes across rail tiles / stat cards / verdict badges / error state, and
+the transcript holds 15 mixed-length bubbles at 375px with zero overlap and no
+tooltips anywhere.
+
+**Not verified — still needs API credits:** the `weak` correction path in real
+prose. Every live call currently fails with `400: Your credit balance is too
+low`, so every verdict falls back to `partial`. The three-verdict machinery is
+proven by unit test and by forcing the render paths; what remains unproven is
+whether the model's actual corrections read naturally.
+
+---
+
+## 13. Post-live-key run
 
 _To be filled in after the live end-to-end run. Findings, prompt adjustments made
 in response to actual output quality, measured latency/cost, and the final

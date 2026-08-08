@@ -41,6 +41,10 @@ router.get('/:sessionId/meta', (req, res) => {
       reason: topic.reason,
       score: topic.score,
       missionData: topic.missionData,
+      // Live grade for this topic's first answer, once it has been given.
+      // Null until then, so the UI knows to keep showing the pre-interview
+      // reasoning caption instead.
+      verdict: topic.verdict || null,
     })),
     // Once finished, currentIndex sits past the end so every orb reads complete.
     currentIndex: done ? session.plan.length : session.topicIndex,

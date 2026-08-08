@@ -150,6 +150,85 @@ body {
   background: var(--accent-dim);
 }
 
+/* ------------------------------------------------------------------ icons */
+
+/* One icon set (Lucide geometry, inlined). Always secondary to text: small,
+   currentColor, and never the focal point of a component. */
+.icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -0.16em;
+}
+.icon--topic,
+.icon--verdict,
+.icon--grade,
+.icon--role {
+  width: 14px;
+  height: 14px;
+  margin-right: 0.4rem;
+}
+.icon--topic {
+  color: var(--ink-3);
+}
+.icon--stat {
+  width: 14px;
+  height: 14px;
+  margin-right: 0.4rem;
+  vertical-align: -0.2em;
+}
+/* The error state lives inside the candidate grid, so its parts must span all
+   columns instead of being placed into card slots. */
+.icon--empty {
+  width: 28px;
+  height: 28px;
+  stroke-width: 1.6;
+  color: var(--amber);
+  display: block;
+  margin-bottom: 0.6rem;
+  grid-column: 1 / -1;
+}
+
+/* --------------------------------------------------------- grade badges */
+
+/* Small, quiet three-tier marker. Restrained tint, not a banner. */
+.grade {
+  /* flex (not inline-flex) so it starts its own line inside the pre-wrap
+     bubble rather than trailing the last word of the answer */
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  margin-top: 0.6rem;
+  padding: 0.2rem 0.5rem 0.2rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.grade--strong {
+  color: var(--green);
+  border-color: rgba(61, 214, 140, 0.4);
+  background: rgba(61, 214, 140, 0.12);
+}
+.grade--partial {
+  color: var(--amber);
+  border-color: rgba(240, 184, 96, 0.4);
+  background: rgba(240, 184, 96, 0.12);
+}
+.grade--weak {
+  color: var(--coral);
+  border-color: rgba(242, 131, 107, 0.4);
+  background: rgba(242, 131, 107, 0.12);
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -497,6 +576,40 @@ body {
   opacity: 1;
 }
 
+/* Once graded, the caption switches from pre-interview reasoning to the live
+   verdict and picks up its tint. Same restrained accent treatment used
+   elsewhere — colour on the text and the icon, no filled banner. */
+.step--strong .step__why {
+  color: var(--green);
+  opacity: 1;
+}
+.step--partial .step__why {
+  color: var(--amber);
+  opacity: 1;
+}
+.step--weak .step__why {
+  color: var(--coral);
+  opacity: 1;
+}
+.step__why .icon {
+  vertical-align: -0.2em;
+}
+
+/* A graded topic keeps its completed tile, but the tile colour follows the
+   grade rather than always reading as a clean pass. Two classes deliberately —
+   a graded step also carries .step--done, whose tile rule appears later in this
+   file, so these must out-specify it rather than rely on source order. */
+.step--done.step--partial .step__tile {
+  background: linear-gradient(180deg, #f5c87b 0%, var(--amber) 100%);
+  border-color: #f5c87b;
+  color: #1b1408;
+}
+.step--done.step--weak .step__tile {
+  background: linear-gradient(180deg, #f59a85 0%, var(--coral) 100%);
+  border-color: #f59a85;
+  color: #1e0d08;
+}
+
 .step--done .step__tile {
   background: linear-gradient(180deg, #57e09d 0%, var(--green) 100%);
   border-color: #57e09d;
@@ -579,6 +692,11 @@ body {
 
 .bubble {
   position: relative;
+  /* Flex items default to flex-shrink: 1. In a height-constrained column that
+     compresses each bubble's box below its own content height, so the text
+     spills past the border and reads as overlapping messages. The container
+     scrolls; the bubbles must not shrink. */
+  flex-shrink: 0;
   max-width: min(78ch, 88%);
   padding: 0.8rem 1rem;
   border-radius: var(--radius);
@@ -651,6 +769,7 @@ body {
 /* Solid thinking pill. */
 .thinking {
   align-self: flex-start;
+  flex-shrink: 0; /* same reason as .bubble */
   display: inline-flex;
   align-items: center;
   gap: 0.38rem;
@@ -781,6 +900,8 @@ body {
 
 .grid__retry {
   margin-top: 0.9rem;
+  grid-column: 1 / -1;
+  justify-self: start;
 }
 
 /* -------------------------------------------------------- report screen */

@@ -173,7 +173,7 @@ talk to.
 |---|---|
 | `GET /api/candidates` | `[{ id, name, jobRole }]` for the picker |
 | `GET /api/candidates/:id` | the full candidate object, ready to POST |
-| `GET /api/interview/:sessionId/meta` | plan + current index, for the progress rail |
+| `GET /api/interview/:sessionId/meta` | plan, current index, and per-topic live verdicts, for the progress rail |
 | `GET /health` | status, model, active session count, uptime |
 
 `/api/interview/:sessionId/meta` exists specifically so the UI can show real
@@ -224,6 +224,29 @@ What the model does own is the part it is good at: writing a question pitched at
 a Business Analyst with 8 years' experience versus a Junior Developer with none,
 and turning "I picked 500 tokens because the course used it" into a follow-up
 about benchmarking.
+
+### Live answer grading
+
+The follow-up call does two jobs in one request: it grades the answer
+(`strong` / `partial` / `weak`) and writes the next thing the interviewer says.
+A `weak` verdict makes the interviewer correct the misconception in its own
+voice — "ah, careful, that's not quite how X behaves" — before asking an easier
+question on the same topic, rather than politely moving on.
+
+Two constraints shape how this is wired:
+
+- **The verdict never appears in the API response.** `POST /api/interview`
+  returns exactly `{ reply, done }`, unchanged. The verdict is session state,
+  exposed only through the demo `/meta` endpoint; the UI reads it by diffing
+  that between turns.
+- **Grading changes what is said, not the structure.** Still five topics, two
+  question-turns each, regardless of how well anyone answers — so the
+  8-question / 4-day floor stays a property of the code.
+
+Verdicts are passed into the final feedback prompt so `strengths` and `gaps`
+cannot contradict what was flagged mid-interview. In the UI, a completed rail
+tile swaps its pre-interview caption ("4 attempts") for the live result
+("Needed a correction"), and the graded answer bubble picks up a small badge.
 
 ### Reliability around the LLM
 

@@ -222,24 +222,37 @@ async function handleContinue(body, res) {
 
   if (session.phase === 'followup') {
     // Second question on the current topic, derived from what they just said.
-    const followUp = await generateFollowUp(
+    // This call also grades the answer: a weak one gets corrected in the
+    // interviewer's own voice before the conversation moves on.
+    const { verdict, reply } = await generateFollowUp(
       session.member,
       currentTopic,
       session.lastQuestion,
       message,
     );
 
+    // Internal state only — the verdict is never part of the response body.
+    // It drives the demo /meta endpoint and the final feedback context.
+    currentTopic.verdict = verdict;
+    // Tag the answer that was graded, so the UI can mark the right bubble.
+    session.transcript[session.transcript.length - 1].verdict = verdict;
+
+    console.log(
+      `[interview] graded day=${currentTopic.day} verdict=${verdict} ` +
+        `answer_chars=${message.length}`,
+    );
+
     session.transcript.push({
       role: 'interviewer',
-      content: followUp,
+      content: reply,
       topicIndex: session.topicIndex,
       day: currentTopic.day,
     });
     session.questionCount += 1;
-    session.lastQuestion = followUp;
+    session.lastQuestion = reply;
     session.phase = 'advance';
 
-    return res.json({ reply: followUp, done: false });
+    return res.json({ reply, done: false });
   }
 
   // phase === 'advance': that was the answer to a follow-up, so this topic is done.

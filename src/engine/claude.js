@@ -63,6 +63,24 @@ const PROFILES = {
   },
 };
 
+/**
+ * Follow-up calls return a grade alongside the reply, so the interviewer can
+ * correct a misconception instead of politely moving on. The verdict is
+ * internal state — it never appears in the /api/interview response body, which
+ * stays exactly { reply, done } per the spec.
+ */
+const VERDICTS = ['strong', 'partial', 'weak'];
+
+const FOLLOWUP_SCHEMA = {
+  type: 'object',
+  properties: {
+    verdict: { type: 'string', enum: VERDICTS },
+    reply: { type: 'string' },
+  },
+  required: ['verdict', 'reply'],
+  additionalProperties: false,
+};
+
 /** JSON Schema for the graded feedback object, enforced server-side by the API. */
 const FEEDBACK_SCHEMA = {
   type: 'object',
@@ -311,27 +329,85 @@ function fallbackQuestion(topic) {
 
 // ----------------------------------------------------------- 3. follow-up
 
+/**
+ * Grade the answer and produce the next thing the interviewer says, in one call.
+ *
+ * @returns {Promise<{verdict: 'strong'|'partial'|'weak', reply: string}>}
+ *   Always resolves — a parse failure or an outage degrades to a 'partial'
+ *   verdict so the conversation never blocks on grading.
+ */
 async function generateFollowUp(member, topic, previousQuestion, candidateAnswer) {
-  const result = await callClaude({
+  const system = buildSystemPrompt(member);
+  const prompt =
+    `You are still on Day ${topic.day}: "${topic.title}".\n\n` +
+    `You asked:\n"${previousQuestion}"\n\n` +
+    `They answered, verbatim:\n"${candidateAnswer}"\n\n` +
+    `Do two things.\n\n` +
+    `1. Grade the answer as "verdict":\n` +
+    `   - "strong"  — technically sound and specific, shows real understanding\n` +
+    `   - "partial" — broadly right but vague, incomplete, or unexamined\n` +
+    `   - "weak"    — factually wrong, confused, evasive, or effectively a non-answer\n` +
+    `   Judge the answer actually given. A one-word answer, a refusal, or "I don't know" is "weak".\n\n` +
+    `2. Write "reply" — the next thing you say out loud, 2-4 sentences.\n` +
+    `   If "strong" or "partial": ask one probing follow-up that could only be asked of THIS answer — ` +
+    `challenge an assumption, ask for a concrete example of something described abstractly, ask why ` +
+    `they chose one approach over another, or push on a case their answer wouldn't handle. If the ` +
+    `answer was thin, narrow the question rather than moving on.\n` +
+    `   If "weak": first correct the misconception in your own voice, warmly and in 1-2 sentences — ` +
+    `the way a senior engineer would say "ah, careful, that's not quite how X behaves — actually...". ` +
+    `Never say "Incorrect" or "The correct answer is". Then ask a simpler question on the same topic ` +
+    `that gives them a way back in.\n\n` +
+    `"reply" is spoken dialogue only — no labels, no preamble, and never mention the grade itself.`;
+
+  let result = await callClaude({
     tag: 'followup',
-    system: buildSystemPrompt(member),
+    system,
+    prompt,
     profile: 'question',
-    prompt:
-      `You are still on Day ${topic.day}: "${topic.title}".\n\n` +
-      `You asked:\n"${previousQuestion}"\n\n` +
-      `They answered, verbatim:\n"${candidateAnswer}"\n\n` +
-      `Ask exactly one probing follow-up that could only be asked of THIS answer. Pick whichever fits ` +
-      `best: challenge an assumption they made, ask for a concrete example of something they described ` +
-      `abstractly, ask why they chose one approach over an alternative, or push on a case their answer ` +
-      `wouldn't handle. If the answer was thin or evasive, narrow the question rather than moving on. ` +
-      `2-4 sentences, no preamble, no evaluation of their answer — just the follow-up.`,
+    outputFormat: { type: 'json_schema', schema: FOLLOWUP_SCHEMA },
   });
 
-  if (result.ok) return result.text;
-  return (
-    `Can you make that concrete for me? Walk me through a specific instance from your work on ` +
-    `${topic.title} — what you actually did, what went wrong, and how you resolved it.`
-  );
+  // Same degrade path as the feedback call: if schema-constrained output is
+  // rejected, retry once on prompting alone and lean on the defensive parse.
+  if (!result.ok && /output_config|json_schema|format/i.test(result.error || '')) {
+    console.log('[claude] tag=followup structured_output_rejected=true retrying_prompt_only=true');
+    result = await callClaude({ tag: 'followup-plain', system, prompt, profile: 'question' });
+  }
+
+  if (result.ok) {
+    const parsed = parseGraded(result.text);
+    if (parsed) return parsed;
+    // Model answered but not as JSON — the prose is still a usable reply.
+    console.log('[claude] tag=followup parse_failed=true using_raw_text=true');
+    return { verdict: 'partial', reply: result.text };
+  }
+
+  return {
+    verdict: 'partial',
+    reply:
+      `Can you make that concrete for me? Walk me through a specific instance from your work on ` +
+      `${topic.title} — what you actually did, what went wrong, and how you resolved it.`,
+  };
+}
+
+/** Parse the graded follow-up payload. Returns null if it cannot be trusted. */
+function parseGraded(text) {
+  const raw = stripToJson(text);
+  if (!raw) return null;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+
+  const verdict = VERDICTS.includes(parsed.verdict) ? parsed.verdict : 'partial';
+  const reply = typeof parsed.reply === 'string' ? parsed.reply.trim() : '';
+  if (!reply) return null;
+
+  return { verdict, reply };
 }
 
 // ------------------------------------------------------- 4. final feedback
@@ -355,11 +431,22 @@ async function generateFeedback(member, plan, transcript) {
   const questionCount = transcript.filter((t) => t.role === 'interviewer').length;
   const topicList = plan.map((t) => `Day ${t.day} (${t.title})`).join(', ');
 
+  // Grades assigned live, mid-interview. Passing them in keeps strengths/gaps
+  // consistent with what the interviewer actually flagged at the time, instead
+  // of re-litigating each answer from scratch at the end.
+  const graded = plan.filter((t) => t.verdict);
+  const verdictLines = graded.length
+    ? `\nYour live assessment of their first answer on each topic:\n` +
+      graded.map((t) => `  - Day ${t.day} (${t.title}): ${t.verdict}`).join('\n') +
+      `\n`
+    : '';
+
   const prompt =
     `The interview is complete. Here is the condensed transcript:\n\n` +
     `${condenseTranscript(plan, transcript)}\n\n` +
     `Topics covered: ${topicList}\n` +
-    `Questions asked: ${questionCount}\n\n` +
+    `Questions asked: ${questionCount}\n` +
+    `${verdictLines}\n` +
     `Write the candidate's assessment as a JSON object with exactly these keys:\n` +
     `  "summary"   — 2-3 sentences on their overall level and how they reason.\n` +
     `  "strengths" — 2-4 items, each citing something specific they actually said.\n` +
@@ -367,7 +454,9 @@ async function generateFeedback(member, plan, transcript) {
     `  "next"      — 2-4 concrete, actionable next steps that follow from those gaps.\n\n` +
     `Every array item must reference this interview. No generic advice that could apply to any ` +
     `candidate ("keep practising", "learn more about AI") — if you cannot ground a point in something ` +
-    `they said, leave it out. Be honest: if an answer was weak, say so plainly. Output JSON only.`;
+    `they said, leave it out. Be honest: if an answer was weak, say so plainly. ` +
+    `Stay consistent with the live assessment above: a topic you graded "weak" belongs in gaps, not ` +
+    `strengths, and vice versa. Output JSON only.`;
 
   const system = buildSystemPrompt(member);
 
@@ -406,20 +495,29 @@ async function generateFeedback(member, plan, transcript) {
  * trusted. Strips markdown fences, tolerates leading prose, coerces item types,
  * and returns null on anything it cannot vouch for.
  */
-function parseFeedback(text) {
-  let raw = text.trim();
+/**
+ * Pull a JSON object out of a model response: strips ```json fences and, if the
+ * object was wrapped in prose, falls back to the outermost {...} span.
+ * Returns null when there is nothing object-shaped to parse.
+ */
+function stripToJson(text) {
+  let raw = String(text || '').trim();
 
-  // ```json ... ``` fences
   const fenced = raw.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   if (fenced) raw = fenced[1].trim();
 
-  // Fall back to the outermost {...} span if the model wrapped the object in prose.
   if (!raw.startsWith('{')) {
     const first = raw.indexOf('{');
     const last = raw.lastIndexOf('}');
     if (first === -1 || last <= first) return null;
     raw = raw.slice(first, last + 1);
   }
+  return raw;
+}
+
+function parseFeedback(text) {
+  const raw = stripToJson(text);
+  if (!raw) return null;
 
   let parsed;
   try {
@@ -463,18 +561,29 @@ function fallbackFeedback(member, plan, transcript) {
     ? Math.round(answers.reduce((sum, a) => sum + a.content.length, 0) / answers.length)
     : 0;
 
-  const strong = plan.filter((t) => t.missionData && t.score <= 10);
-  const struggled = plan.filter((t) => t.score >= 50);
+  // Prefer live grades where the interview managed to assign them; fall back to
+  // the cohort record only for topics that were never graded.
+  const gradedStrong = plan.filter((t) => t.verdict === 'strong');
+  const gradedPoor = plan.filter((t) => t.verdict === 'weak' || t.verdict === 'partial');
+
+  const strong = gradedStrong.length ? gradedStrong : plan.filter((t) => t.missionData && t.score <= 10);
+  const struggled = gradedPoor.length ? gradedPoor : plan.filter((t) => t.score >= 50);
   const skipped = plan.filter((t) => t.missionData?.skipped);
 
   const strengths = strong.length
-    ? strong.map(
-        (t) => `Cleared Day ${t.day} (${t.title}) on the first attempt during the cohort and was able to discuss it here.`,
+    ? strong.map((t) =>
+        t.verdict === 'strong'
+          ? `Answered strongly on Day ${t.day} (${t.title}) during the interview.`
+          : `Cleared Day ${t.day} (${t.title}) on the first attempt during the cohort and was able to discuss it here.`,
       )
     : [`Worked through all ${questionCount} questions across ${plan.length} curriculum topics without disengaging.`];
 
   const gaps = struggled.length
-    ? struggled.map((t) => `Day ${t.day} (${t.title}) — ${t.reason}. Worth revisiting in depth.`)
+    ? struggled.map((t) =>
+        t.verdict
+          ? `Day ${t.day} (${t.title}) — answer graded "${t.verdict}" during the interview. Worth revisiting in depth.`
+          : `Day ${t.day} (${t.title}) — ${t.reason}. Worth revisiting in depth.`,
+      )
     : [`No single topic stood out as a weakness from the cohort record; a deeper technical screen would be needed to differentiate.`];
 
   const next = [
@@ -508,6 +617,7 @@ module.exports = {
   generateFeedback,
   // exported for tests
   parseFeedback,
+  parseGraded,
   fallbackFeedback,
   fallbackQuestion,
   MODEL,
