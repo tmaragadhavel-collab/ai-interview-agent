@@ -73,7 +73,12 @@ function deriveLevelAndDomain(jobRole, yearsExperience) {
     [/\bux\b|\bui\b|design/i, 'Design'],
     [/marketing|business|product/i, 'Business'],
     [/\bit\b|support/i, 'IT/Support'],
-    [/backend|software|engineer/i, 'Engineering'],
+    // Checked last, and deliberately wide: "Architect", "Developer" and
+    // "Computer Science" are engineering roles that the narrower
+    // backend/software/engineer list dropped into the generic "General"
+    // bucket. "HR Manager" is the only role in the sample data that correctly
+    // stays General.
+    [/backend|software|engineer|developer|architect|computer science/i, 'Engineering'],
   ];
 
   const matched = domainRules.find(([pattern]) => pattern.test(role));
