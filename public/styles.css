@@ -33,7 +33,22 @@
   --radius-sm: 10px;
   --radius-xs: 8px;
 
-  --shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  /* Elevation is two shadows plus a bevel, never one shadow. A tight contact
+     shadow anchors the element to the surface; a wide, soft ambient shadow gives
+     it height. One shadow alone reads as a sticker. The inset highlight implies
+     a light source catching the top edge. */
+  --bevel: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --bevel-strong: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35),
+    var(--bevel);
+  --shadow-lift: 0 4px 8px rgba(0, 0, 0, 0.45), 0 20px 44px rgba(0, 0, 0, 0.42),
+    var(--bevel-strong);
+  /* Smaller elements (rail tiles, bubbles) get a shallower version so the whole
+     page isn't floating at the same altitude. */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 6px 16px rgba(0, 0, 0, 0.3),
+    var(--bevel);
+
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 
   --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
   --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
@@ -166,7 +181,27 @@ body {
   padding: clamp(2rem, 6vw, 5rem) clamp(1.25rem, 4vw, 2.5rem) 4rem;
 }
 .picker__head {
+  position: relative;
   margin-bottom: clamp(2rem, 5vw, 3rem);
+}
+/* One static, diffuse accent glow behind the headline — a depth cue, not a
+   scene. No animation. `body { overflow-x: hidden }` keeps it from ever
+   producing a horizontal scrollbar. */
+.picker__head::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: -8%;
+  top: -190px;
+  width: min(720px, 130%);
+  height: 440px;
+  pointer-events: none;
+  background: radial-gradient(
+    50% 50% at 50% 50%,
+    rgba(255, 122, 26, 0.15) 0%,
+    rgba(255, 122, 26, 0.06) 45%,
+    rgba(255, 122, 26, 0) 72%
+  );
 }
 
 /* ---------------------------------------------------------- picker cards */
@@ -199,9 +234,10 @@ body {
   cursor: pointer;
   overflow: hidden;
   transition:
-    background 150ms ease-out,
-    border-color 150ms ease-out,
-    transform 150ms ease-out;
+    background 180ms var(--ease),
+    border-color 180ms var(--ease),
+    box-shadow 180ms var(--ease),
+    transform 180ms var(--ease);
 }
 /* Orange left-accent bar, revealed on hover/focus. */
 .cand::before {
@@ -220,7 +256,14 @@ body {
 .cand:focus-visible {
   background: var(--panel-hover);
   border-color: var(--line-strong);
-  transform: translateY(-2px);
+  /* Lift and grow the shadow together — a card that rises without its shadow
+     changing reads as sliding, not lifting. */
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lift);
+}
+.cand:active:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
 }
 .cand:hover:not(:disabled)::before,
 .cand:focus-visible::before {
@@ -346,14 +389,17 @@ body {
   font-family: var(--font-mono);
   font-size: 0.75rem;
   font-weight: 600;
-  background: #1e1e23;
+  /* Reads as a physical token: gradient face, bevel, own contact shadow. */
+  background: linear-gradient(180deg, #24242a 0%, #1b1b20 100%);
   border: 1px solid var(--line);
   color: var(--ink-3);
+  box-shadow: var(--shadow-sm);
   z-index: 1;
   transition:
-    background 180ms ease-out,
-    border-color 180ms ease-out,
-    color 180ms ease-out;
+    background 180ms var(--ease),
+    border-color 180ms var(--ease),
+    box-shadow 180ms var(--ease),
+    color 180ms var(--ease);
 }
 
 .step__label {
@@ -380,9 +426,12 @@ body {
 }
 
 .step--current .step__tile {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: linear-gradient(180deg, #ff8c38 0%, var(--accent) 100%);
+  border-color: #ff8c38;
   color: #14100c;
+  /* Soft outward glow so "current" is legible at a glance, not just a fill swap. */
+  box-shadow: 0 0 16px rgba(255, 122, 26, 0.35), 0 1px 3px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 .step--current .step__title {
   color: var(--ink);
@@ -394,9 +443,10 @@ body {
 }
 
 .step--done .step__tile {
-  background: var(--green);
-  border-color: var(--green);
+  background: linear-gradient(180deg, #57e09d 0%, var(--green) 100%);
+  border-color: #57e09d;
   color: #06170f;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.24);
 }
 .step--done .step__title {
   color: var(--ink-2);
@@ -479,7 +529,8 @@ body {
   border-radius: var(--radius);
   border: 1px solid var(--line);
   background: var(--panel);
-  box-shadow: var(--shadow);
+  /* Shallower than panels — bubbles sit closer to the page. */
+  box-shadow: var(--shadow-sm);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   animation: rise 200ms ease-out both;
@@ -620,33 +671,61 @@ body {
   border: 1px solid transparent;
   cursor: pointer;
   transition:
-    background 140ms ease-out,
-    border-color 140ms ease-out,
-    transform 140ms ease-out,
-    opacity 140ms ease-out;
+    background 180ms var(--ease),
+    border-color 180ms var(--ease),
+    box-shadow 180ms var(--ease),
+    transform 120ms var(--ease),
+    opacity 180ms var(--ease);
 }
+
+/* A few percent lighter at the top, so the fill itself suggests a raised face
+   rather than a flat swatch. */
 .btn--send {
   padding: 0.65rem 1.3rem;
   color: #14100c;
-  background: var(--accent);
-  border-color: var(--accent);
+  background: linear-gradient(180deg, #ff8c38 0%, var(--accent) 100%);
+  border-color: #ff8c38;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 6px 16px rgba(255, 122, 26, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 .btn--send:hover:not(:disabled) {
-  background: #ff8f3d;
+  background: linear-gradient(180deg, #ff9a4d 0%, #ff8524 100%);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35), 0 10px 22px rgba(255, 122, 26, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.26);
+}
+/* Press: sink a pixel and lose the top highlight. */
+.btn--send:active:not(:disabled) {
+  transform: translateY(1px);
+  background: linear-gradient(180deg, var(--accent) 0%, #ef6d10 100%);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 .btn--send:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+  box-shadow: none;
 }
+
 .btn--ghost {
   padding: 0.7rem 1.4rem;
   color: var(--ink);
-  background: var(--panel-hover);
+  background: linear-gradient(180deg, #23232a 0%, var(--panel-hover) 100%);
   border-color: var(--line-strong);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 6px 16px rgba(0, 0, 0, 0.28),
+    var(--bevel);
 }
 .btn--ghost:hover {
-  background: #24242a;
+  background: linear-gradient(180deg, #2a2a32 0%, #23232a 100%);
   border-color: rgba(255, 122, 26, 0.45);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.38), 0 10px 22px rgba(0, 0, 0, 0.32),
+    var(--bevel-strong);
+}
+.btn--ghost:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+.grid__retry {
+  margin-top: 0.9rem;
 }
 
 /* -------------------------------------------------------- report screen */
@@ -751,6 +830,23 @@ body {
   padding: 1.15rem 1.25rem 1.35rem;
   border-top-width: 3px;
   border-top-style: solid;
+  transition:
+    box-shadow 180ms var(--ease),
+    transform 180ms var(--ease);
+}
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lift);
+}
+
+.stat {
+  transition:
+    box-shadow 180ms var(--ease),
+    transform 180ms var(--ease);
+}
+.stat:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lift);
 }
 .card--green {
   border-top-color: var(--green);
@@ -921,7 +1017,13 @@ body {
     animation: none !important;
     opacity: 0.7;
   }
-  .cand:hover:not(:disabled) {
+  /* Depth stays (shadows are static); the motion that conveys it does not. */
+  .cand:hover:not(:disabled),
+  .cand:active:not(:disabled),
+  .card:hover,
+  .stat:hover,
+  .btn--send:active:not(:disabled),
+  .btn--ghost:active {
     transform: none;
   }
   * {

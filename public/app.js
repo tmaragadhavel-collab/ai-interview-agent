@@ -176,7 +176,29 @@
       }
     } catch (err) {
       el.grid.setAttribute('aria-busy', 'false');
-      el.grid.textContent = `Could not load candidates: ${err.message}`;
+      el.grid.textContent = '';
+
+      const msg = document.createElement('p');
+      msg.className = 'grid__status';
+      // A bare fetch rejection (TypeError) means the request never reached a
+      // server — almost always the Node process not running, which the generic
+      // "Failed to fetch" does nothing to explain.
+      msg.textContent =
+        err instanceof TypeError
+          ? `Could not reach the server at ${location.origin}. Check that "npm start" is running, then retry.`
+          : `Could not load candidates: ${err.message}`;
+
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'btn btn--ghost grid__retry';
+      retry.textContent = 'Retry';
+      retry.addEventListener('click', () => {
+        el.grid.textContent = '';
+        el.grid.setAttribute('aria-busy', 'true');
+        loadCandidates();
+      });
+
+      el.grid.append(msg, retry);
     }
   }
 
