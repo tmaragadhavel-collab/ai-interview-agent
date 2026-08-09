@@ -8,8 +8,8 @@ they just said, and produces structured feedback at the end.
 
 Built for the ABTalks Vibe Code Hackathon, Problem Statement 2.
 
-- **Live demo:** _add your Render URL here_
-- **Repo:** _add your GitHub URL here_
+- **Live demo:** [Render URL]
+- **Repo:** https://github.com/tmaragadhavel-collab/ai-interview-agent
 
 ---
 
